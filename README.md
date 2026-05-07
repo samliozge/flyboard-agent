@@ -32,9 +32,9 @@ pip install fastapi uvicorn openai python-dotenv pytest httpx
 
 ### 2. Configure environment
 cp .env.example .env
-# Add your OpenAI API key to .env:
-# OPENAI_API_KEY=sk-...
-# OPENAI_MODEL=gpt-4o
+ Add your OpenAI API key to .env:
+ OPENAI_API_KEY=sk-...
+ OPENAI_MODEL=gpt-4o
 
 ### 3. Run
 uvicorn main:app --reload
