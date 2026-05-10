@@ -82,3 +82,67 @@ def test_agent_request_full():
     req = AgentRequest(task="Test", customer_id="C123", language="es")
     assert req.customer_id == "C123"
     assert req.language == "es"
+
+# ===== ORCHESTRATION LOOP TEST =====
+
+def test_orchestration_loop_hubspot():
+    """
+    Orchestration loop test: HubSpot ticket scenario.
+    Mocks OpenAI so no real API call is made.
+    Verifies: search_kb is called, create_ticket is called, ticket ID returned.
+    """
+    from unittest.mock import patch, MagicMock
+    from agent.runner import run_agent
+
+    # 1. iteration: OpenAI returns function_call for search_kb
+    mock_search_output = MagicMock()
+    mock_search_output.type = "function_call"
+    mock_search_output.name = "search_kb"
+    mock_search_output.arguments = '{"query": "HubSpot writeback error", "top_k": 5}'
+    mock_search_output.call_id = "call_001"
+
+    mock_response_1 = MagicMock()
+    mock_response_1.output = [mock_search_output]
+
+    # 2. iteration: OpenAI returns function_call for create_ticket
+    mock_ticket_output = MagicMock()
+    mock_ticket_output.type = "function_call"
+    mock_ticket_output.name = "create_ticket"
+    mock_ticket_output.arguments = '{"title": "HubSpot failing", "body": "Cannot write back", "priority": "high"}'
+    mock_ticket_output.call_id = "call_002"
+
+    mock_response_2 = MagicMock()
+    mock_response_2.output = [mock_ticket_output]
+
+    # 3. iteration: OpenAI returns final message
+    mock_content = MagicMock()
+    mock_content.text = "I have searched the KB and opened ticket TICK-000001."
+
+    mock_message_output = MagicMock()
+    mock_message_output.type = "message"
+    mock_message_output.content = [mock_content]
+
+    mock_response_3 = MagicMock()
+    mock_response_3.output = [mock_message_output]
+
+    with patch("agent.runner.client") as mock_client:
+        mock_client.responses.create.side_effect = [
+            mock_response_1,
+            mock_response_2,
+            mock_response_3,
+        ]
+
+        result = run_agent(task="HubSpot writeback failing, open high priority ticket")
+
+    # Assertions
+    assert result.final_answer != ""
+    assert result.trace_id != ""
+    assert result.metrics.openai_calls == 3
+
+    tool_names = [t.name for t in result.tool_calls]
+    assert "search_kb" in tool_names
+    assert "create_ticket" in tool_names
+
+    ticket_result = next(t for t in result.tool_calls if t.name == "create_ticket")
+    assert ticket_result.result["ticket_id"].startswith("TICK-")
+    assert ticket_result.result["status"] == "created"
